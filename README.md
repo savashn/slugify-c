@@ -28,10 +28,9 @@ The second parameter of `slugify()` is for special options.
 const char *title = "Всем привет";
 
 slugify_options_t opts = {
-    .flags = PRESERVE_CASE            // Keep original case (do not lowercase)
-             | ALLOW_UNICODE,         // Don't convert non-ASCII characters to ASCII
-    .separator = '_',                 // Use underscore instead of dash
-    .max_length = 30                  // Limit slug to 30 characters
+    .flags = PRESERVE_CASE,     // Keep the original case (do not lowercase)
+    .separator = '_',           // Use underscore instead of dash
+    .max_length = 30            // Limit slug to 30 characters
 };
 
 char *slug = slugify(title, &opts);
@@ -46,3 +45,5 @@ free(slug);
 Original: Всем привет
 Custom slug: Vsem_privet
 ```
+
+If you want to allow unicode, you can basically add `ALLOW UNICODE` flag.
