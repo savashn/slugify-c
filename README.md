@@ -46,4 +46,4 @@ Original: Всем привет
 Custom slug: Vsem_privet
 ```
 
-If you want to allow unicode, you can basically add `ALLOW UNICODE` flag.
+If you want to allow unicode, you can basically add `ALLOW_UNICODE` flag.
