@@ -22,6 +22,104 @@ static int utf8_char_length(unsigned char c)
     return 1; /* Invalid UTF-8, treat as single byte */
 }
 
+/* Check for overlong encodings and invalid sequences */
+static int is_overlong_encoding(const char *str, size_t char_len, uint32_t codepoint)
+{
+    switch (char_len)
+    {
+    case 2:
+        /* 2-byte sequence should encode values >= 0x80 */
+        return codepoint < 0x80;
+    case 3:
+        /* 3-byte sequence should encode values >= 0x800 */
+        return codepoint < 0x800;
+    case 4:
+        /* 4-byte sequence should encode values >= 0x10000 */
+        return codepoint < 0x10000;
+    default:
+        return 0;
+    }
+}
+
+/* Secure UTF-8 decoder with overlong protection */
+static uint32_t utf8_decode_secure(const char *str, size_t *consumed, int *is_valid)
+{
+    unsigned char c = (unsigned char)str[0];
+    uint32_t codepoint = 0;
+    size_t char_len = 0;
+
+    *is_valid = 1;
+    *consumed = 1;
+
+    if (c < 0x80)
+    {
+        return c;
+    }
+    else if ((c & 0xE0) == 0xC0)
+    {
+        char_len = 2;
+        codepoint = (c & 0x1F) << 6;
+        if ((str[1] & 0xC0) != 0x80)
+        {
+            *is_valid = 0;
+            return 0;
+        }
+        codepoint |= (str[1] & 0x3F);
+        *consumed = 2;
+    }
+    else if ((c & 0xF0) == 0xE0)
+    {
+        char_len = 3;
+        codepoint = (c & 0x0F) << 12;
+        if ((str[1] & 0xC0) != 0x80 || (str[2] & 0xC0) != 0x80)
+        {
+            *is_valid = 0;
+            return 0;
+        }
+        codepoint |= ((str[1] & 0x3F) << 6);
+        codepoint |= (str[2] & 0x3F);
+        *consumed = 3;
+    }
+    else if ((c & 0xF8) == 0xF0)
+    {
+        char_len = 4;
+        codepoint = (c & 0x07) << 18;
+        if ((str[1] & 0xC0) != 0x80 || (str[2] & 0xC0) != 0x80 || (str[3] & 0xC0) != 0x80)
+        {
+            *is_valid = 0;
+            return 0;
+        }
+        codepoint |= ((str[1] & 0x3F) << 12);
+        codepoint |= ((str[2] & 0x3F) << 6);
+        codepoint |= (str[3] & 0x3F);
+        *consumed = 4;
+    }
+    else
+    {
+        *is_valid = 0;
+        return 0;
+    }
+
+    /* Check for overlong encodings */
+    if (is_overlong_encoding(str, char_len, codepoint))
+    {
+        *is_valid = 0;
+        return 0;
+    }
+
+    /* Additional security checks */
+    if (codepoint > 0x10FFFF ||                         /* Beyond Unicode range */
+        (codepoint >= 0xD800 && codepoint <= 0xDFFF) || /* UTF-16 surrogates */
+        (codepoint >= 0xFDD0 && codepoint <= 0xFDEF) || /* Non-characters */
+        (codepoint & 0xFFFE) == 0xFFFE)
+    { /* Non-characters */
+        *is_valid = 0;
+        return 0;
+    }
+
+    return codepoint;
+}
+
 static int is_utf8_valid(const char *str, size_t len)
 {
     for (size_t i = 0; i < len;)
@@ -32,12 +130,52 @@ static int is_utf8_valid(const char *str, size_t len)
         if (i + char_len > len)
             return 0;
 
-        /* Validate continuation bytes */
-        for (int j = 1; j < char_len; j++)
+        uint32_t codepoint = 0;
+
+        /* Validate continuation bytes and decode codepoint */
+        if (char_len == 1)
         {
-            if ((str[i + j] & 0xC0) != 0x80)
-                return 0;
+            codepoint = c;
         }
+        else if (char_len == 2)
+        {
+            if ((str[i + 1] & 0xC0) != 0x80)
+                return 0;
+            codepoint = ((c & 0x1F) << 6) | (str[i + 1] & 0x3F);
+        }
+        else if (char_len == 3)
+        {
+            if ((str[i + 1] & 0xC0) != 0x80 || (str[i + 2] & 0xC0) != 0x80)
+                return 0;
+            codepoint = ((c & 0x0F) << 12) | ((str[i + 1] & 0x3F) << 6) | (str[i + 2] & 0x3F);
+        }
+        else if (char_len == 4)
+        {
+            if ((str[i + 1] & 0xC0) != 0x80 || (str[i + 2] & 0xC0) != 0x80 || (str[i + 3] & 0xC0) != 0x80)
+                return 0;
+            codepoint = ((c & 0x07) << 18) | ((str[i + 1] & 0x3F) << 12) | ((str[i + 2] & 0x3F) << 6) | (str[i + 3] & 0x3F);
+        }
+        else
+        {
+            return 0; /* Invalid first byte */
+        }
+
+        /* Check for overlong encodings */
+        if (is_overlong_encoding(&str[i], char_len, codepoint))
+            return 0;
+
+        /* Check for invalid Unicode ranges */
+        if (codepoint > 0x10FFFF)
+            return 0; /* Beyond valid Unicode range */
+
+        /* Check for UTF-16 surrogates (invalid in UTF-8) */
+        if (codepoint >= 0xD800 && codepoint <= 0xDFFF)
+            return 0;
+
+        /* Check for non-characters */
+        if ((codepoint >= 0xFDD0 && codepoint <= 0xFDEF) ||
+            (codepoint & 0xFFFE) == 0xFFFE)
+            return 0;
 
         i += char_len;
     }
