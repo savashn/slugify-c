@@ -868,7 +868,7 @@ static uint32_t utf8_decode(const char *str, size_t *consumed)
 static slugify_options_t slugify_default_options(void)
 {
     slugify_options_t opts = {0};
-    opts.flags = LOWERCASE;
+    opts.preserve_case = false;
     opts.separator = '-';
     opts.max_length = 0;
     return opts;
@@ -907,7 +907,7 @@ static size_t slugify_length(const char *input, const slugify_options_t *options
                 }
             }
         }
-        else if (opts.flags & ALLOW_UNICODE)
+        else if (opts.preserve_case)
         {
             estimated += consumed;
         }
@@ -957,7 +957,7 @@ static int slugify_ex(const char *input, char *output, size_t out_size,
 
             if (isalnum((unsigned char)c))
             {
-                char out_char = (opts.flags & PRESERVE_CASE) ? c : (char)tolower((unsigned char)c);
+                char out_char = (opts.preserve_case) ? c : (char)tolower((unsigned char)c);
 
                 if (j + 1 >= out_size)
                     return SLUGIFY_ERROR_BUFFER;
@@ -975,7 +975,7 @@ static int slugify_ex(const char *input, char *output, size_t out_size,
 
                     for (size_t k = 0; k < trans_len; k++)
                     {
-                        char c2 = (opts.flags & PRESERVE_CASE) ? trans[k] : (char)tolower((unsigned char)trans[k]);
+                        char c2 = (opts.preserve_case) ? trans[k] : (char)tolower((unsigned char)trans[k]);
                         output[j++] = c2;
 
                         if (opts.max_length > 0 && j >= opts.max_length)
@@ -999,7 +999,7 @@ static int slugify_ex(const char *input, char *output, size_t out_size,
         {
             // Non-ASCII characters
 
-            if (opts.flags & ALLOW_UNICODE)
+            if (opts.preserve_case)
             {
                 // Copy UTF-8 bytes directly
                 if (j + consumed >= out_size)
@@ -1022,7 +1022,7 @@ static int slugify_ex(const char *input, char *output, size_t out_size,
 
                     for (size_t k = 0; k < trans_len; k++)
                     {
-                        char c2 = (opts.flags & PRESERVE_CASE) ? trans[k] : (char)tolower((unsigned char)trans[k]);
+                        char c2 = (opts.preserve_case) ? trans[k] : (char)tolower((unsigned char)trans[k]);
                         output[j++] = c2;
 
                         if (opts.max_length > 0 && j >= opts.max_length)
